@@ -1,6 +1,6 @@
 #[derive(Debug, Clone)]
 pub struct ArenaTree<T> {
-    pub arena: Vec<T>,
+    arena: Vec<T>,
 }
 
 impl<T> ArenaTree<T> {

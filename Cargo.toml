@@ -12,3 +12,4 @@ fuser = "0.9.1"
 libc = "0.2.112"
 log = "0.4.14"
 tar = "0.4.38"
+clap = { version = "3.0.0-rc.8", features = ["derive"] }

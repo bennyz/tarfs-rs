@@ -1,16 +1,12 @@
 use std::{
-    borrow::BorrowMut,
-    cell::RefCell,
     collections::{btree_map::Entry as MapEntry, BTreeMap},
     ffi::OsStr,
     fs::File,
     path::PathBuf,
-    rc::Rc,
-    slice::SliceIndex,
     time::SystemTime,
 };
 
-use crate::{arena, index};
+use crate::arena;
 use chrono::TimeZone;
 use fuser::{FileAttr, FileType};
 use tar::{Archive, Entry, EntryType};
@@ -46,9 +42,9 @@ impl Index {
         let mut next_inode = 2;
         for (i, e) in archive.entries().unwrap().enumerate() {
             let entry = e.unwrap();
+            let full_path = entry.path().unwrap().to_path_buf();
             let tar_entry = TarEntry::from(entry);
 
-            // If we found a directory, we need to update the entry we have, as it's likely a parent
             let mut clone = lookup_map.clone();
             let index_entry = clone.entry(tar_entry.clone().path).or_insert(IndexEntry {
                 inode: next_inode,
@@ -58,8 +54,7 @@ impl Index {
             });
 
             let parent_path = PathBuf::from(
-                tar_entry
-                    .path
+                full_path
                     .parent()
                     .unwrap()
                     .file_name()
@@ -69,9 +64,7 @@ impl Index {
             match lookup_map.entry(parent_path.clone()) {
                 MapEntry::Occupied(mut e) => {
                     let parent_index = e.get_mut();
-                    println!("found parent path {:#?}", parent_path);
                     index_entry.parent = parent_index.inode;
-                    println!("inserting at index {}", parent_index.inode - 1);
                     arena
                         .get_mut((parent_index.inode - 1) as usize)
                         .unwrap()
@@ -79,7 +72,6 @@ impl Index {
                         .push(next_inode);
                 }
                 MapEntry::Vacant(_) => {
-                    println!("new parent entry");
                     let parent_index_entry = IndexEntry {
                         inode: next_inode as u64,
                         parent: 1,
@@ -101,11 +93,22 @@ impl Index {
             lookup_map.insert(PathBuf::from(key), index_entry.clone());
             index_entry.entry.attr.ino = next_inode;
             arena.push(index_entry.clone());
-            println!("finished i {}", i);
             next_inode += 1;
         }
 
         Index { arena }
+    }
+
+    pub fn lookup_child(&self, parent_inode: u64, name: &str) -> Option<&IndexEntry> {
+        let parent = self.arena.get(parent_inode as usize - 1).unwrap();
+        for c in &parent.children {
+            let child = self.arena.get(*c as usize - 1).unwrap();
+            if child.entry.path.file_name().unwrap() == name {
+                return Some(child);
+            }
+        }
+
+        None
     }
 }
 
@@ -208,7 +211,7 @@ impl<'a> From<Entry<'a, File>> for TarEntry {
             blksize: 512,
             flags: 0,
         };
-        let path = PathBuf::from(entry.path().unwrap().as_os_str());
+        let path = PathBuf::from(entry.path().unwrap().file_name().unwrap());
         TarEntry { path, attr }
     }
 }
