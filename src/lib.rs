@@ -25,6 +25,7 @@ impl TarFs {
 
 impl<'a> Filesystem for TarFs {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
+        println!("lookup: {:?}", name);
         match self.index.lookup_child(parent, name.to_str().unwrap()) {
             Some(e) => {
                 reply.entry(&TTL, &e.entry.attr, 0);

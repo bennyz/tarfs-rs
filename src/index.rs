@@ -1,6 +1,5 @@
 use std::{
     collections::{btree_map::Entry as MapEntry, BTreeMap},
-    ffi::OsStr,
     fs::File,
     path::PathBuf,
     time::SystemTime,
@@ -13,6 +12,7 @@ use tar::{Archive, Entry, EntryType};
 
 #[derive(Debug, Clone)]
 pub struct TarEntry {
+    pub file_name: PathBuf,
     pub path: PathBuf,
     pub attr: FileAttr,
 }
@@ -53,13 +53,7 @@ impl Index {
                 entry: tar_entry.clone(),
             });
 
-            let parent_path = PathBuf::from(
-                full_path
-                    .parent()
-                    .unwrap()
-                    .file_name()
-                    .unwrap_or(OsStr::new("")),
-            );
+            let parent_path = PathBuf::from(full_path.parent().unwrap());
 
             match lookup_map.entry(parent_path.clone()) {
                 MapEntry::Occupied(mut e) => {
@@ -89,13 +83,13 @@ impl Index {
             }
 
             let key = tar_entry.clone().path;
-            let key = key.file_name().unwrap();
-            lookup_map.insert(PathBuf::from(key), index_entry.clone());
+            lookup_map.insert(key, index_entry.clone());
             index_entry.entry.attr.ino = next_inode;
             arena.push(index_entry.clone());
             next_inode += 1;
         }
 
+        println!("lookup map {:#?}", lookup_map);
         Index { arena }
     }
 
@@ -114,6 +108,7 @@ impl Index {
 
 fn create_root_tar_entry() -> TarEntry {
     TarEntry {
+        file_name: PathBuf::from("."),
         path: PathBuf::from(""),
         attr: FileAttr {
             ino: 1,
@@ -147,6 +142,7 @@ fn create_root_index(root: TarEntry) -> IndexEntry {
 impl Default for TarEntry {
     fn default() -> Self {
         Self {
+            file_name: Default::default(),
             path: Default::default(),
             attr: FileAttr {
                 ino: 0,
@@ -211,7 +207,11 @@ impl<'a> From<Entry<'a, File>> for TarEntry {
             blksize: 512,
             flags: 0,
         };
-        let path = PathBuf::from(entry.path().unwrap().file_name().unwrap());
-        TarEntry { path, attr }
+        let file_name = PathBuf::from(entry.path().unwrap().file_name().unwrap());
+        TarEntry {
+            file_name,
+            path: entry.path().unwrap().to_path_buf(),
+            attr,
+        }
     }
 }
